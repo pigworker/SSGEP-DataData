@@ -85,3 +85,5 @@ magic ()
 Dec : Set -> Set
 Dec X = X + (X -> Zero)
 
+! : forall {l}{X : Set l}{{x : X}} -> X
+! {{x}} = x

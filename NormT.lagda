@@ -52,7 +52,7 @@ cong f refl = refl
 \end{spec}
 
 Thus armed, let us specify what makes an |Applicative| acceptable, then
-show that such a thing is certainly a |Functor|.
+show that such a thing is certainly an |EndoFunctor|.
 \nudge{I had to $\eta$-expand |o| in lieu of subtyping.}
 %format ApplicativeOKP = "\D{ApplicativeOKP}"
 %format lawId = "\F{lawId}"

@@ -22,9 +22,11 @@ data Nat : Set where
   zero  :         Nat
   suc   : Nat ->  Nat
 
+_+Nat_ : Nat -> Nat -> Nat
+zero +Nat y = y
+suc x +Nat y = suc (x +Nat y)
+
 {-# BUILTIN NATURAL Nat #-}
-{-# BUILTIN ZERO zero #-}
-{-# BUILTIN SUC suc #-}
 
 length : {X : Set} -> List X -> Nat
 length <> = zero
@@ -65,13 +67,17 @@ vapp (f , fs) (s , ss) = f s , vapp fs ss
 zip2 : forall {n S T} -> Vec S n -> Vec T n -> Vec (S * T) n
 zip2 ss ts = vapp (vapp (vec _,_) ss) ts
 
+_++_ : forall {X m n} -> Vec X m -> Vec X n -> Vec X (m +Nat n)
+<> ++ ys = ys
+(x , xs) ++ ys = x , xs ++ ys
+infixr 4 _++_
+
 
 -- applicative and traversable structure
 
 record EndoFunctor (F : Set -> Set) : Set1 where
   field
     map  : forall {S T} -> (S -> T) -> F S -> F T
-open EndoFunctor {{...}} public
 
 record Applicative (F : Set -> Set) : Set1 where
   infixl 2 _<*>_
@@ -80,12 +86,12 @@ record Applicative (F : Set -> Set) : Set1 where
     _<*>_   : forall {S T} -> F (S -> T) -> F S -> F T
   applicativeEndoFunctor : EndoFunctor F
   applicativeEndoFunctor = record { map = _<*>_ o pure }
-open Applicative {{...}} public
 
 applicativeVec  : forall {n} -> Applicative \ X -> Vec X n
 applicativeVec  = record { pure = vec; _<*>_ = vapp }
 endoFunctorVec  : forall {n} -> EndoFunctor \ X -> Vec X n
-endoFunctorVec  = applicativeEndoFunctor
+endoFunctorVec  = applicativeEndoFunctor where
+  open Applicative applicativeVec
 
 applicativeFun : forall {S} -> Applicative \ X -> S -> X
 applicativeFun = record
@@ -99,7 +105,12 @@ applicativeId = record { pure = id; _<*>_ = id }
 
 applicativeComp : forall {F G} ->
   Applicative F -> Applicative G -> Applicative (F o G)
-applicativeComp aF aG = {!!}
+applicativeComp aF aG = record
+  { pure = pure aF o pure aG
+  ; _<*>_ = \ fgf fgs -> (pure aF (_<*>_ aG) ** fgf) ** fgs
+  } where
+  open Applicative
+  _**_ = _<*>_ aF
 
 record Monoid (X : Set) : Set where
   infixr 4 _&_
@@ -107,35 +118,40 @@ record Monoid (X : Set) : Set where
     neut  : X
     _&_   : X -> X -> X
   monoidApplicative : Applicative \ _ -> X
-  monoidApplicative = {!!}
-open Monoid {{...}} public -- it's not obvious that we'll avoid ambiguity
+  monoidApplicative = record { pure = \ _ -> neut ; _<*>_ = _&_ }
 
 record Traversable (F : Set -> Set) : Set1 where
   field
-    traverse :  forall {G S T}{{AG : Applicative G}} ->
-                (S -> G T) -> F S -> G (F T)
+    traverse :  forall {G}{{AG : Applicative G}}
+                       {S T} -> (S -> G T) -> F S -> G (F T)
   traversableEndoFunctor : EndoFunctor F
   traversableEndoFunctor = record { map = traverse }
-open Traversable {{...}} public
 
 Id : (X : Set) -> X -> X
 Id X x = x
 
 traversableVec : {n : Nat} -> Traversable \ X -> Vec X n
-traversableVec = record { traverse = vtr } where
-  vtr :  forall {n G S T}{{_ : Applicative G}} ->
-         (S -> G T) -> Vec S n -> G (Vec T n)
-  vtr {{aG}} f <> = pure {{aG}} <>
-  vtr {{aG}} f (s , ss) = pure {{aG}} _,_ <*> f s <*> vtr f ss
+traversableVec = record { traverse =  vtr } where
+  vtr : forall {n G}{{AG : Applicative G}}
+                 {S T} -> (S -> G T) -> Vec S n -> G (Vec T n)
+  vtr {n}{G}{{AG}}{S}{T} f = go where
+    open Applicative AG
+    go : {n : Nat} -> Vec S n -> G (Vec T n)
+    go <>        = pure <>
+    go (x , ss)  = pure _,_ <*> f x <*> go ss
 
-xpose : {m n : Nat}{X : Set} -> Vec (Vec X n) m ->  Vec (Vec X m) n
-xpose = traverse id
+module Traverses where
+  open Traversable {{...}}
 
-crush :  forall {F X Y}{{TF : Traversable F}}{{M : Monoid Y}} ->
-         (X -> Y) -> F X -> Y
-crush {{M = M}} = 
-  traverse {T = One}{{AG = monoidApplicative {{M}}}}  -- |T| arbitrary
+  xpose : {m n : Nat}{X : Set} -> Vec (Vec X n) m ->  Vec (Vec X m) n
+  xpose = traverse id
 
+  crush :  forall {F X Y}{{TF : Traversable F}}{{M : Monoid Y}} ->
+           (X -> Y) -> F X -> Y
+  crush {{M = M}} = traverse {T = One} where  -- |T| arbitrary
+      open Monoid M
+
+open Traverses
 
 record Normal : Set1 where
   constructor _/_
@@ -162,10 +178,6 @@ K A = A / \ _ -> 0
 I : Normal
 I = One / \ _ -> 1
 
-_+Nat_ : Nat -> Nat -> Nat
-zero +Nat y = y
-suc x +Nat y = suc (x +Nat y)
-
 _+N_ : Normal -> Normal -> Normal
 (ShF / szF) +N (ShG / szG) = (ShF + ShG) / 
   (\ { (tt , sf) -> szF sf
@@ -175,31 +187,30 @@ _+N_ : Normal -> Normal -> Normal
 _*N_ : Normal -> Normal -> Normal
 (ShF / szF) *N (ShG / szG) = (ShF * ShG) / vv (\ fs gs -> szF fs +Nat szG gs)
 
-{-
 nInj : forall {X}(F G : Normal) -> <! F !>N X + <! G !>N X -> <! F +N G !>N X
-nInj F G forg = {!!}
+nInj F G (tt , fsh , xs) = (tt , fsh) , xs
+nInj F G (ff , gsh , xs) = (ff , gsh) , xs
 
 data _^-1_ {S T : Set}(f : S -> T) : T -> Set where
   from : (s : S) -> f ^-1 f s
 
 nCase : forall {X} F G (s : <! F +N G !>N X) -> nInj F G ^-1 s
-nCase F G fng = {!!}
-
-nOut : forall {X}(F G : Normal) -> <! F +N G !>N X -> <! F !>N X + <! G !>N X
-nOut F G xs' = {!!}
+nCase F G ((tt , fsh) , xs) = from (tt , fsh , xs)
+nCase F G ((ff , gsh) , xs) = from (ff , gsh , xs)
 
 nPair : forall {X}(F G : Normal) -> <! F !>N X * <! G !>N X -> <! F *N G !>N X
-nPair F G fxgx = {!!}
+nPair F G ((fsh , xs) , (gsh , xs')) = (fsh , gsh) , xs ++ xs'
 
 -- Normal and Traversable
--}
 
 sumMonoid : Monoid Nat
 sumMonoid = {!!}
 
 normalTraversable : (F : Normal) -> Traversable <! F !>N
 normalTraversable F = record
-  { traverse = \ {{aG}} f -> vv \ s xs -> pure {{aG}}  (_,_ s) <*> traverse f xs }
+  { traverse = \ {{aG}} f -> \ { (s , xs) ->
+    let open Applicative aG in pure (_,_ s) <*> traverse f xs } }
+  where open Traversable {{...}}
 
 sizeT : forall {F}{{TF : Traversable F}}{X} -> F X -> Nat
 sizeT = crush (\ _ -> 1)
@@ -207,6 +218,7 @@ sizeT = crush (\ _ -> 1)
 normalT : forall F {{TF : Traversable F}} -> Normal
 normalT F = F One / sizeT
 
+{-
 -- fixpoints of normal functors
 
 data Tree (N : Normal) : Set where
@@ -223,7 +235,7 @@ zeroN = <$ ((tt , <>) , <>) $>
 
 sucN : NatT -> NatT
 sucN n = <$ ((ff , <>) , (n , <>)) $>
-
+-}
 {-
 -- theorem-proving
 -- talk about equality

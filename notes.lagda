@@ -118,6 +118,11 @@ or in your own dependently typed language, or maybe one day in mine.
 %include IxCon.lagda
 
 
+\chapter{Ornaments, Algebraic and Otherwise}
+
+%include Orn.lagda
+
+
 \chapter{Induction-Recursion}
 
 %include IR.lagda
