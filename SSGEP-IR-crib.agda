@@ -93,8 +93,55 @@ NextEl : forall {U}{El} -> NextU U El -> Set
 data NextU U El where
   enum : Nat -> NextU U El
   pi sg ww : (S : NextU U El)(T : NextEl S -> NextU U El) -> NextU U El
+  uu : NextU U El
+  el : U -> NextU U El
 
-NextEl (enum x) = {!!}
-NextEl (pi S T) = {!!}
-NextEl (sg S T) = {!!}
-NextEl (ww S T) = {!!}
+NextEl (enum n) = In n
+NextEl (pi S T) = (s : NextEl S) -> NextEl (T s)
+NextEl (sg S T) = Sg (NextEl S) \ s -> NextEl (T s)
+NextEl (ww S T) = W (NextEl S) \ s -> NextEl (T s)
+NextEl {U = U} uu = U
+NextEl {El = El} (el X) = El X
+
+SET : Nat -> Set
+EL  : (n : Nat) -> SET n -> Set
+SET' : Nat -> Set
+EL'  : (n : Nat) -> SET' n -> Set
+
+SET n = NextU  (SET' n) (EL' n)
+EL  n = NextEl
+
+SET' zero     = Zero
+SET' (suc n)  = SET n
+EL'  zero     X = magic
+EL'  (suc n)  X = EL n X
+
+-- let's put induction-recursion in a bottle
+
+data IR (I : Set1) : Set1          -- descriptions of IR sets
+INFO : forall I -> IR I -> Set1    -- the information you can get from a set
+
+data IR I where
+  rec : IR I
+  kon : Set -> IR I
+  pi  : (A : Set)(T : A -> IR I) -> IR I
+  sg  : (S : IR I)(T : INFO I S -> IR I) -> IR I
+
+INFO I rec      = I
+INFO I (kon A)  = UP A
+INFO I (pi A T) = (a : A) -> INFO I (T a)
+INFO I (sg S T) = SG (INFO I S) \ s -> INFO I (T s)
+
+Node   : forall {I}(T : IR I) ->
+           (X : Set)(d : X -> I) -> Set
+decode : forall {I}(T : IR I) ->
+           (X : Set)(d : X -> I) -> Node T X d -> INFO I T
+Node rec X d = X
+Node (kon A) X d = A
+Node (pi A T) X d = (a : A) -> Node (T a) X d
+Node (sg S T) X d = Sg (Node S X d) \ s -> Node (T (decode S X d s)) X d
+decode rec X d x = d x
+decode (kon A) X d a = up a
+decode (pi A T) X d f = \ a -> decode (T a) X d (f a)
+decode (sg S T) X d (s , t) = s' , decode (T s') X d t where
+  s' = decode S X d s

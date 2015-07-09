@@ -13,6 +13,8 @@ open import Agda.Primitive
                          University of Oxford
                               July 2015
 
+             https://github.com/pigworker/SSGEP-DataData
+
 -}
 
 {-
@@ -453,45 +455,49 @@ open Cont
 
 [_]C : Cont -> Set -> Set
 [ S <| P ]C X = Sg S \ s -> P s -> X
+
+mapC : forall {X Y} -> (F : Cont) -> (X -> Y) -> [ F ]C X -> [ F ]C Y
+mapC F f (s , k) = s , f o k
+
 {-)-}
 
-{-+}
+{-(-}
 ListC : Cont
 ListC = Nat <| In
-{+-}
+{-)-}
 
 
-{-+}
+{-(-}
 record _-C>_ (F G : Cont) : Set where
   field
     planC : (s : Sh F) -> [ G ]C (Po F s)
 open _-C>_
 
 _C$_ : forall {F G} -> F -C> G -> forall {X} -> [ F ]C X -> [ G ]C X
-fg C$ xf = {!!}
+fg C$ (s , f) = mapC _ f (planC fg s)
 
 findPlanC : forall {F G} -> (forall {X} -> [ F ]C X -> [ G ]C X) -> F -C> G
-findPlanC fg = {!!}
-{+-}
+findPlanC fg = record { planC = λ s → fg (s , (λ x → x)) }
+{-)-}
 
 -- closure properties
-{-+}
+{-(-}
 IC : Cont
-IC = {!!}
+IC = One <| \ _ -> One
 
 SgC : (S : Set)(T : S -> Cont) -> Cont
-SgC S T = {!!}
+SgC S T = (Sg S (\ s -> Sh (T s))) <| (\ { (s , t) -> Po (T s) t })
 
 PiC : (S : Set)(T : S -> Cont) -> Cont
-PiC S T = {!!}
+PiC S T = ((s : S) -> Sh (T s)) <| (\ f -> Sg S \ s -> Po (T s) (f s))
 
 _oC_ : Cont -> Cont -> Cont
-F oC G = {!!}
+(Sh <| Po) oC G = SgC Sh \ s -> PiC (Po s) \ _ -> G 
 -- normalize and see!
 
 RaggedC : Cont
 RaggedC = ListC oC ListC  -- gives ragged lists of lists
-{+-}
+{-)-}
 
 
 {-(-}
@@ -504,13 +510,14 @@ data _o*_ (F : Cont)(X : Set) : Set where
 _o*C : Cont -> Cont
 F o*C = (F o* One) <| Leaves where
   Leaves : F o* One -> Set
-  Leaves t = {!!}
+  Leaves [ <> ] = One
+  Leaves < s , f > = Sg (Po F s) (\ p -> Leaves (f p))
 {-)-}
 
 
 -- W types
 
-{-+}
+{-(-}
 W : (A : Set)(B : A -> Set) -> Set
 W A B = (A <| B) o* Zero
 
@@ -522,18 +529,18 @@ NatW : Set
 NatW = W Two So
 
 zeW : NatW
-zeW = ?
+zeW = < ff , (λ ()) >
 
 suW : NatW -> NatW
-suW n = ?
-{+-}
+suW n = < tt , (λ x → n) >
+{-)-}
 
 
 
 
 
 -- Hancock's Tensor
-{-+}
+{-(-}
 _><C_ : Cont -> Cont -> Cont
 (S0 <| P0) ><C (S1 <| P1) = (S0 * S1) <| \ { (s0 , s1) -> P0 s0 * P1 s1 }
 -- unlike composition, you issue command 1 before you see response 0
@@ -542,7 +549,7 @@ MatrixC : Cont
 MatrixC = ListC ><C ListC   -- gives rectangular matrices
 
 -- iterating ><C ????
-{+-}
+{-)-}
 
 
 
@@ -552,7 +559,7 @@ MatrixC = ListC ><C ListC   -- gives rectangular matrices
 
 
 
-{-+}
+{-(-}
 data List (X : Set) : Set where
   <> : List X
   _,_ : X -> List X -> List X
@@ -563,13 +570,13 @@ All P (x , xs) = P x * All P xs
 
 _><*C : Cont -> Cont
 (S <| P) ><*C = List S <| All P
-{+-}
+{-)-}
 
 -- but what's that, then?
 
 
 
-{-+}
+{-(-}
 _+List_ : forall {X} -> List X -> List X -> List X
 <>       +List ys = ys
 (x , xs) +List ys = x , (xs +List ys)
@@ -587,15 +594,15 @@ FreeIdiom C = record
       (fs +List ss) , \ ps ->
        let pp = chopAll fs ss ps in fk (fst pp) (sk (snd pp)) }
   }
-{+-}
+{-)-}
 
 
 
 
 -- LET's GO FULL ON HANCOCK
-{-+}
+{-(-}
 dualC : Cont -> Cont
-dualC (S <| P) = {!!}
+dualC (S <| P) = ((s : S) -> P s) <| (\ _ -> S)
 
 record _o%_ (F : Cont)(Y : Set) : Set where
   coinductive
@@ -606,10 +613,13 @@ open _o%_
 
 _||_ : forall {F X Y} -> F o* X -> dualC F o% Y ->
                     --   client    server
-                        (X * [ ListN ]N Y) * (dualC F o% Y)
+                        (X * List Y) * (dualC F o% Y)
                     -- output     log        survivor
-client || server = {!!}
-{+-}
+[ x ]     || server = (x , <>) , server
+< s , k > || server with go server
+... | (r , j) with k (r s) || j s
+... | ((x , ps) , server') = (x , out server , ps) , server'
+{-)-}
 
 
 {--------------------------------------------------------------------}
@@ -618,10 +628,10 @@ client || server = {!!}
 
 -- moving into the indexed world
 
-{-+}
+{-(-}
 _-:>_ : forall {l}{I : Set l} -> (I -> Set l) -> (I -> Set l) -> Set l
 X -:> Y = forall {i} -> X i -> Y i
-{+-}
+{-)-}
 
 -- just figure out what "arrows" are, and breathe normally
 
@@ -633,7 +643,7 @@ X -:> Y = forall {i} -> X i -> Y i
 
 -- an indexed container is...
 -- ...a container that you've indexed...
-{-+}
+{-(-}
 record IxCon (I : Set) : Set1 where
   constructor _/_
   field
@@ -651,7 +661,7 @@ J <I I = J -> IxCon I       -- for each sort of "peg", give the containers
   ->  (p : Po (Node (F j)) s)     -- position  that's  shape-appropriate
   ->  X (next (F j) s p)          -- element   that's  port-appropriate
   where open IxCon
-{+-}
+{-)-}
 -- or it's a PREDICATE TRANSFORMER taking postconditions to preconditions...
 
 
@@ -659,17 +669,17 @@ J <I I = J -> IxCon I       -- for each sort of "peg", give the containers
 
 
 -- ...and it's monotone
-{-+}
+{-(-}
 mapI : forall {I J}(F : J <I I){X Y} -> (X -:> Y) -> [ F ]I X -:> [ F ]I Y
 mapI F h (s , k) = s , h o k
-{+-}
+{-)-}
 
 
 
 
 -- what's a morphism?
 
-{-+}
+{-(-}
 module MORPH where
   open IxCon
   record _-I>_ {I J}(F G : J <I I) : Set where
@@ -677,7 +687,7 @@ module MORPH where
     field
       planI : forall {j}(s : Sh (Node (F j))) ->
               [ G ]I (\ i -> next (F j) s ~ i) j
-{+-}
+{-)-}
 
 -- it's a DEVICE DRIVER from the F interface to the G interface
 --   for any initial state j,
@@ -691,34 +701,34 @@ module MORPH where
 
 -- closure properties
 
-{-+}
+{-(-}
 -- place for an element
 elI : forall {I} -> I -> IxCon I
 elI i
-  =  {!!}
-  /  {!!}
+  =  IC
+  /  (\ { <> <> -> i })
 
 -- choose an A
 SgI : forall {I} A -> (A -> IxCon I) -> IxCon I
 SgI {I} A B
-  =  {!!}
-  /  {!!}
+  =  (SgC A \ a -> Node (B a))
+  /  (\ { (a , s) p -> next (B a) s p })
   where open IxCon
 
 -- offer the choice of an A
 PiI : forall {I} A -> (A -> IxCon I) -> IxCon I
 PiI {I} A B
-  =  {!!}
-  /  {!!}
+  =  (PiC A \ a -> Node (B a))
+  /  (\ { f (a , p) -> next (B a) (f a) p })
   where open IxCon
 
 -- reindex
 ReI : forall {I H} -> IxCon I -> (I -> H) -> IxCon H
 ReI F h
-  =  {!!}
-  /  {!!}
+  =  Node
+  /  (\ s p -> h (next s p))
   where open IxCon F
-{+-}
+{-)-}
 
 
 
@@ -739,23 +749,24 @@ _oI_ : forall {I J K} -> K <I J -> J <I I -> K <I I
 {+-}
 
 
--- Petersson- Synek trees
-{-+}
+-- Petersson-Synek trees
+{-(-}
+pattern inl x = tt , x
+pattern inr x = ff , x
+
 Child : forall {I J} -> J <I (I + J) -> (I -> Set) -> I + J -> Set
 
 data Mu {I J}   (F : J <I (I + J))   (X : I -> Set)(j : J) : Set where
 
   <_> : [ F ]I (Child F X) j -> Mu F X j
 
-Child F X (tt , i) = X i
-Child F X (ff , j) = Mu F X j
-{+-}
+Child F X (inl i) = X i
+Child F X (inr j) = Mu F X j
+{-)-}
 
 
 -- vectors in this style
-{-+}
-pattern inl x = tt , x
-pattern inr x = ff , x
+{-(-}
 
 _<?>_ : forall {l}{P : Two -> Set l} -> P tt -> P ff -> (b : Two) -> P b
 (t <?> f) tt = t
@@ -765,19 +776,22 @@ infixr 4 _<?>_
 VECF : Nat <I (One + Nat)
 VECF n = One <| VecPo n / VecNx n where
   VecPo : Nat -> One -> Set
-  VecPo n = {!!}
+  VecPo zero <> = Zero
+  VecPo (suc n) <> = Two
   VecNx : (n : Nat)(s : One) -> VecPo n s -> One + Nat
-  VecNx n s p = {!!}
+  VecNx zero <> p = magic
+  VecNx (suc n) s tt = inl <>
+  VecNx (suc n) s ff = inr n
 
 VEC : Set -> Nat -> Set
 VEC X = Mu VECF (\ _ -> X)
 
 vnil : {X : Set} -> VEC X zero
-vnil = {!!}
+vnil = < (<> , (λ ())) >
 
 vcons : {X : Set}{n : Nat} -> X -> VEC X n -> VEC X (suc n)
-vcons x xs = {!!}
-{+-}
+vcons x xs = < (<> , x <?> xs) >
+{-)-}
 
 
 -- free monads on indexed containers
@@ -849,7 +863,7 @@ doorFun =
 
 
 -- CLOSURE under least fixpoint
-{-+}
+{-(-}
 module MUCLOSURE {I J}(F : J <I (I + J)) where
 
   open module Ij (j : J) = IxCon (F j)
@@ -871,7 +885,7 @@ module MUCLOSURE {I J}(F : J <I (I + J)) where
 
   MuI : J <I I
   MuI j = Skel j <| Path j / leaf j
-{+-}
+{-)-}
 
 
 -- From Derivatives to Jacobians
