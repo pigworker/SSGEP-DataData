@@ -433,8 +433,74 @@ SgC S T = Sg S (Sh o T) <| \ { (s , t) -> Po (T s) t }
 PiC : (S : Set)(T : S -> Cont) -> Cont
 PiC S T = ((s : S) -> Sh (T s)) <| \ { f -> Sg S \ s -> Po (T s) (f s) }
 
+IC : Cont
+IC = One <| \ _ -> One
+
 _oC_ : Cont -> Cont -> Cont
 F oC G = SgC (Sh F) \ s -> PiC (Po F s) \ p -> G
+
+
+
+
+-- Hancock's Tensor
+{-(-}
+_><C_ : Cont -> Cont -> Cont
+(S0 <| P0) ><C (S1 <| P1) = (S0 * S1) <| \ { (s0 , s1) -> P0 s0 * P1 s1 }
+-- unlike composition, you issue command 1 before you see response 0
+
+MatrixC : Cont
+MatrixC = ListC ><C ListC   -- gives rectangular matrices
+
+-- iterating ><C ????
+{-)-}
+
+
+
+
+
+
+
+
+
+{-(-}
+data List (X : Set) : Set where
+  <> : List X
+  _,_ : X -> List X -> List X
+
+All : {X : Set}(P : X -> Set) -> List X -> Set
+All P <> = One
+All P (x , xs) = P x * All P xs
+
+_><*C : Cont -> Cont
+(S <| P) ><*C = List S <| All P
+{-)-}
+
+-- but what's that, then?
+
+
+
+{-(-}
+_+List_ : forall {X} -> List X -> List X -> List X
+<>       +List ys = ys
+(x , xs) +List ys = x , (xs +List ys)
+
+chopAll : forall {X P}(xs ys : List X) -> All P (xs +List ys) ->
+             All P xs * All P ys
+chopAll <> ys ps = <> , ps
+chopAll (x , xs) ys (px , ps) with chopAll xs ys ps
+chopAll (x , xs) ys (px , ps) | pxs , pys = (px , pxs) , pys
+
+FreeIdiom : (C : Cont) -> Idiom [ C ><*C ]C
+FreeIdiom C = record
+  { pure = \ x -> <> , \ <> -> x
+  ; _<*>_ = \ { (fs , fk) (ss , sk) ->
+      (fs +List ss) , \ ps ->
+       let pp = chopAll fs ss ps in fk (fst pp) (sk (snd pp)) }
+  }
+{-)-}
+
+
+
 
 data _o*_ (F : Cont)(X : Set) : Set where
   [_] : X -> F o* X
@@ -469,38 +535,93 @@ _||_ : forall {F X Y} -> F o* X -> dualC F o% Y ->
 {- 3. indexed containers                                            -}
 {--------------------------------------------------------------------}
 
-record Index (I : Set) : Set1 where
+-- moving into the indexed world
+
+{-(-}
+_-:>_ : {I : Set} -> (I -> Set) -> (I -> Set) -> Set
+X -:> Y = forall {i} -> X i -> Y i
+{-)-}
+
+-- just figure out what "arrows" are, and breathe normally
+
+-- try thinking of (I -> Set) as "predicates on I"
+-- mapping each i to the set of proofs that it's acceptable
+
+-- try thinking of (I -> Set) as a bunch of sorts of stuff
+
+
+-- an indexed container is...
+-- ...a container that you've indexed...
+
+{-(-}
+record IxCon (I : Set) : Set1 where
   constructor _/_
   field
     Node : Cont
     next : (s : Sh Node)(p : Po Node s) -> I
 infixl 3 _/_
 
+-- ...like you plug different sorts of stuff into different "ports"
+
 _<I_ : Set -> Set -> Set1
-J <I I = J -> Index I
+J <I I = J -> IxCon I       -- for every "peg", give the containers
 
 [_]I : forall {I J} -> J <I I -> (I -> Set) -> (J -> Set)
 [ F ]I X j
-  =   Sg (Sh (Node (F j))) \ s
-  ->  (p : Po (Node (F j)) s)
-  ->  X (next (F j) s p)
-  where open Index
+  =   Sg (Sh (Node (F j))) \ s    -- shape     that's  peg-appropriate
+  ->  (p : Po (Node (F j)) s)     -- position  that's  shape-appropriate
+  ->  X (next (F j) s p)          -- element   that's  port-appropriate
+  where open IxCon
+{-)-}
+-- or it's a PREDICATE TRANSFORMER taking postconditions to preconditions
+-- and it's monotone
+{-(-}
+mapI : forall {I J}(F : J <I I){X Y} -> (X -:> Y) -> [ F ]I X -:> [ F ]I Y
+mapI F h (s , k) = s , h o k
+{-)-}
+
+
+-- what's a morphism?
+
+module MORPH where
+  open IxCon
+  record _-I>_ {I J}(F G : J <I I) : Set where
+    constructor _/_
+    field
+      planI : forall {j}(s : Sh (Node (F j))) ->
+              [ G ]I (\ i -> next (F j) s ~ i) j
+
+
+-- it's a DEVICE DRIVER from the F interface to the G interface
+--   for any initial state j,
+--     we translate *valid* F commands to *valid* G commands, and then
+--     we translate *valid* G responses which *induce* final state i
+--               to *valid* F responses which *ensure* final state i
 
 -- closure properties
 
--- choose a K
-SgI : forall {I J K} -> Sg J K <I I -> J <I I
-SgI {I}{J}{K} F j
-  =  (SgC (K j) \ k -> Node (F (j , k)))
-  /  \ { (k , s) p -> next (F (j , k)) s p }
-  where open Index
+-- place for an element
+elI : forall {I} -> I -> IxCon I
+elI i = IC / \ _ _ -> i
 
--- ask for a K
-PiI : forall {I J K} -> Sg J K <I I -> J <I I
-PiI {I}{J}{K} F j
-  =  (PiC (K j) \ k -> Node (F (j , k)))
-  /  (\ { f (s , p) -> next (F (j , s)) (f s) p })
-  where open Index
+-- choose an A
+SgI : forall {I} A -> (A -> IxCon I) -> IxCon I
+SgI {I} A B
+  =  SgC A (Node o B)
+  /  \ { (a , s) p -> next (B a) s p }
+  where open IxCon
+
+-- offer the choice of an A
+PiI : forall {I} A -> (A -> IxCon I) -> IxCon I
+PiI {I} A B
+  =  PiC A (Node o B)
+  /  \ { f (a , p) -> next (B a) (f a) p }
+  where open IxCon
+
+-- reindex
+ReI : forall {I H} -> IxCon I -> (I -> H) -> IxCon H
+ReI F h = Node / \ s p -> h (next s p)
+  where open IxCon F
 
 -- non-goldfish composition of containers
 _thenC_ : (F : Cont)(G : (s : Sh F)(p : Po F s) -> Cont) -> Cont
@@ -511,7 +632,7 @@ _oI_ : forall {I J K} -> K <I J -> J <I I -> K <I I
 (F oI G) k
   = (Node (F k) thenC \ s p -> Node (G (next (F k) s p)))
   / (\ { (s , s') (p , p') -> next (G (next (F k) s p)) (s' p) p' })
-  where open Index
+  where open IxCon
 
 
 -- trees
@@ -521,6 +642,9 @@ data Mu {I J}(F : J <I (I + J))(X : I -> Set)(j : J) : Set where
 
 Child F X (tt , i) = X i
 Child F X (ff , j) = Mu F X j
+
+pattern inl x = tt , x
+pattern inr x = ff , x
 
 _<?>_ : forall {l}{P : Two -> Set l} -> P tt -> P ff -> (b : Two) -> P b
 (t <?> f) tt = t
@@ -534,7 +658,7 @@ VECF n = One <| VecSh n / VecNx n where
   VecSh (suc n) _ = Two
   VecNx : (n : Nat)(s : One) -> VecSh n s -> One + Nat
   VecNx zero    <> = \ _ -> magic
-  VecNx (suc n) <> = (tt , <>) <?> (ff , n)
+  VecNx (suc n) <> = (inl <>) <?> (inr n)
 
 VEC : Set -> Nat -> Set
 VEC X = Mu VECF (\ _ -> X)
@@ -545,9 +669,91 @@ vnil = < <> , (\ _ -> magic) >
 vcons : {X : Set}{n : Nat} -> X -> VEC X n -> VEC X (suc n)
 vcons x xs = < <> , x <?> xs >
 
+
+
+-- free monads on indexed containers
+{-(-}
+StopOrGo : forall {I} -> (I <I I) -> (I <I (I + I))
+StopOrGo F i = SgI Two (elI (inl i) <?> ReI (F i) inr)
+
+_I*_ : forall {I} -> (I <I I) -> (I -> Set) -> (I -> Set)
+(F I* X) i = Mu (StopOrGo F) X i
+
+skip :  forall {I}(F : I <I I){X : I -> Set} ->
+        X -:> (F I* X)
+skip F x = < (tt , <>) , (\ _ -> x) >
+
+extend : forall {I}(F : I <I I){X Y : I -> Set}  ->
+        (X -:> (F I* Y)) -> (F I* X) -:> (F I* Y)
+extend F k < (tt , <>) , j > = k (j <>)
+extend F k < (ff , s) , j > = < (ff , s) , (\ p -> extend F k (j p)) >
+
+bind : forall {I}(F : I <I I){X Y : I -> Set}{i}  ->
+        (F I* X) i -> (X -:> (F I* Y)) -> (F I* Y) i
+bind F xF k = extend F k xF
+
+semi : forall {I}(F : I <I I){X Y Z : I -> Set} ->
+       (X -:> (F I* Y)) -> (Y -:> (F I* Z)) -> (X -:> (F I* Z))
+semi F f g = extend F g o f
+
+one : forall {I}(F : I <I I){X : I -> Set} ->
+        ([ F ]I X) -:> (F I* X)
+one F (s , k) = < (ff , s) , skip F o k >
+{-)-}
+
+{-(-}
+module CALL {I}(F : I <I I){i} where
+  open IxCon (F i)
+  call : (s : Sh Node) -> (F I* \ i' -> next s ~ i') i
+  call s = one F (s , from)
+open CALL
+
+{-)-}
+
+{-(-}
+data DoorState : Set where opened closed : DoorState
+
+data DoorCommand : DoorState -> Set where
+  knock    : DoorCommand closed
+  tryOpen  : DoorCommand closed
+  close    : DoorCommand opened
+
+DoorResponse : (i : DoorState) -> DoorCommand i -> Set
+DoorResponse .closed knock    = One
+DoorResponse .closed tryOpen  = DoorState
+DoorResponse .opened close    = One
+
+doorNext : (i : DoorState)(c : DoorCommand i)(r : DoorResponse i c) -> DoorState
+doorNext .closed knock r = closed
+doorNext .closed tryOpen r = r
+doorNext .opened close r = closed
+{-)-}
+
+{-(-}
+DOOR : DoorState <I DoorState
+DOOR i = (DoorCommand i <| DoorResponse i) / doorNext i
+
+data _==_ {l}{X : Set l}(x : X) : X -> Set l where
+  refl : x == x
+
+doorFun : (DOOR I* (_==_ closed)) closed
+doorFun =
+  bind DOOR (call DOOR knock) \ { {.closed} (from <>) ->
+  bind DOOR (call DOOR tryOpen) \
+    { {.opened} (from opened) ->
+      bind DOOR (call DOOR close) \ { {.closed} (from <>) ->
+      skip DOOR refl }
+    ; {.closed} (from closed) ->
+      skip DOOR refl
+    }
+  }
+{-)-}
+
+
+
 module SCRIPT {I J}(F : J <I (I + J)) where
 
-  open module Ij (j : J) = Index (F j)
+  open module Ij (j : J) = IxCon (F j)
 
   Script : J -> Set
   Script j = Mu F (\ _ -> One) j 
@@ -567,21 +773,20 @@ module SCRIPT {I J}(F : J <I (I + J)) where
   MuI : J <I I
   MuI j = Script j <| Path j / leaf j
 
-data _==_ {l}{X : Set l}(x : X) : X -> Set l where
-  refl : x == x
 
 _-[_] : (X : Set)(x : X) -> Set
 X -[ x ] = Sg X \ x' -> x == x' -> Zero
 
 Jacobian : forall {I J} -> J <I I -> (J * I) <I I
-Jacobian {I}{J} F (j , i)
-  =  (Sg (Sh (Node j)) \ s -> next j s ~ i) <| JPos j i / JInx j i
+Jacobian {I}{J} F (j , i) =  JSh j i <| JPo j i / jIx j i
   where
-    open module Ij j = Index (F j)
-    JPos : forall j i -> (Sg (Sh (Node j)) \ s -> next j s ~ i) -> Set
-    JPos j .(next j s p) (s , from p) = Po (Node j) s -[ p ]
-    JInx : forall j i -> (x : Sg (Sh (Node j)) \ s -> next j s ~ i) -> JPos j i x -> I
-    JInx j ._ (s , from _) (p , _) = next j s p
+    open module Ij j = IxCon (F j)
+    JSh : J -> I -> Set                   -- peg j; hole at port i
+    JSh j i = Sg (Sh (Node j)) \ s -> next j s ~ i
+    JPo : forall j i -> JSh j i -> Set    -- anywhere but the hole
+    JPo j .(next j s p) (s , from p) = Po (Node j) s -[ p ]
+    jIx : forall j i -> (s : JSh j i) -> JPo j i s -> I
+    jIx j ._ (s , from _) (p , _) = next j s p
 
 
 {--------------------------------------------------------------------}
@@ -603,14 +808,11 @@ data Desc (I : Set) : Set1 where
 [ var i ]d   X = X i
 [ pi A B ]d  X = (a : A) -> [ B a ]d X
 
-_-:>_ : {I : Set} -> (I -> Set) -> (I -> Set) -> Set
-X -:> Y = forall {i} -> X i -> Y i
-
 mapD : forall {I}(A : Desc I){X Y : I -> Set}(f : X -:> Y) ->
        [ A ]d X -> [ A ]d Y
 mapD (var i)  f x          = f x
 mapD (sg A B) f (a , xB)   = a , mapD (B a) f xB
-mapD (pi A B) f xB         a = mapD (B a) f (xB a)
+mapD (pi A B) f xB         = \ a -> mapD (B a) f (xB a)
 mapD d1       f <>         = <>
 mapD (A d* B) f (xA , xB)  = mapD A f xA , mapD B f xB
 
@@ -704,8 +906,7 @@ fooC : forall {gam s} -> TERM gam s
 fooC = {!< (! 2) , ? >!}
 -}
 
-DescIC : forall {I J} -> (J -> Desc I) -> J <I I
-DescIC {I}{J} D j = (SHAPE (D j) <| POS (D j)) / NEXT (D j) where
+module DESCICSTUFF {I : Set} where
   SHAPE : Desc I -> Set
   SHAPE A = [ A ]d \ _ -> One
   POS : (A : Desc I) -> SHAPE A -> Set
@@ -721,10 +922,29 @@ DescIC {I}{J} D j = (SHAPE (D j) <| POS (D j)) / NEXT (D j) where
   NEXT d1 s p = magic
   NEXT (A d* B) (s , _) (tt , p) = NEXT A s p
   NEXT (A d* B) (_ , s) (ff , p) = NEXT B s p
+open DESCICSTUFF
+
+DescIC : forall {I J} -> (J -> Desc I) -> J <I I
+DescIC {I}{J} D j = (SHAPE (D j) <| POS (D j)) / NEXT (D j) where
 
 toIC : forall {I J}(D : J -> Desc I){X}{j} -> [ D j ]d X -> [ DescIC D ]I X j
-toIC D {j = j} xD = mapD (D j) _ xD , {!!}
+toIC {I}{J} D {X}{j} xD = mapD (D j) _ xD , outIC (D j) xD where
+  outIC : (A : Desc I)(xD : [ A ]d X)(p : POS A (mapD A _ xD)) -> X (NEXT A (mapD A _ xD) p)
+  outIC (var i) x <> = x
+  outIC (sg A B) (a , b) p = outIC (B a) b p
+  outIC (pi A B) f (a , b) = outIC (B a) (f a) b
+  outIC d1 s p = magic
+  outIC (A d* B) (a , b) (tt , p) = outIC A a p
+  outIC (A d* B) (a , b) (ff , p) = outIC B b p
 
+fromIC : forall {I J}(D : J -> Desc I){X}{j} -> [ DescIC D ]I X j -> [ D j ]d X
+fromIC {I}{J} D {X}{j} (s , k) = inIC (D j) s k where
+  inIC : (A : Desc I)(s : [ A ]d \ _ -> One) -> ((p : POS A s) -> X (NEXT A s p)) -> [ A ]d X
+  inIC (var i) <> k = k <>
+  inIC (sg A B) (a , s) k = a , inIC (B a) s k
+  inIC (pi A B) f k a = inIC (B a) (f a) (\ p -> k (a , p))
+  inIC d1 <> k = <>
+  inIC (A d* B) (a , b) k = (inIC A a (\ p -> k (tt , p))) , (inIC B b (\ p -> k (ff , p)))
 
 record SG {l}(S : Set l)(T : S -> Set l) : Set l where
   constructor _,_
