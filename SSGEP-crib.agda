@@ -440,6 +440,11 @@ _oC_ : Cont -> Cont -> Cont
 F oC G = SgC (Sh F) \ s -> PiC (Po F s) \ p -> G
 
 
+ListC : Cont
+ListC = Nat <| In
+
+
+
 
 
 -- Hancock's Tensor
@@ -511,6 +516,30 @@ F o*C = (F o* One) <| Leaves where
   Leaves : F o* One -> Set
   Leaves [ <> ] = One
   Leaves < s , k > = Sg (Po F s) \ p -> Leaves (k p)
+
+
+
+-- W types
+
+{-(-}
+W : (A : Set)(B : A -> Set) -> Set
+W A B = (A <| B) o* Zero
+
+So : Two -> Set
+So tt = One
+So ff = Zero
+
+NatW : Set
+NatW = W Two So
+
+zeW : NatW
+zeW = < ff , (\ ()) >
+
+suW : NatW -> NatW
+suW n = < tt , (\ x -> n) >
+{-)-}
+
+
 
 dualC : Cont -> Cont
 dualC (S <| P) = ((s : S) -> P s) <| \ _ -> S

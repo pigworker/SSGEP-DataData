@@ -494,7 +494,7 @@ RaggedC = ListC oC ListC  -- gives ragged lists of lists
 {+-}
 
 
-{-+}
+{-(-}
 data _o*_ (F : Cont)(X : Set) : Set where
   [_] : X -> F o* X
   <_> : [ F ]C (F o* X) -> F o* X
@@ -505,7 +505,29 @@ _o*C : Cont -> Cont
 F o*C = (F o* One) <| Leaves where
   Leaves : F o* One -> Set
   Leaves t = {!!}
+{-)-}
+
+
+-- W types
+
+{-+}
+W : (A : Set)(B : A -> Set) -> Set
+W A B = (A <| B) o* Zero
+
+So : Two -> Set
+So tt = One
+So ff = Zero
+
+NatW : Set
+NatW = W Two So
+
+zeW : NatW
+zeW = ?
+
+suW : NatW -> NatW
+suW n = ?
 {+-}
+
 
 
 
