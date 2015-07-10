@@ -863,7 +863,7 @@ doorFun =
 
 
 -- CLOSURE under least fixpoint
-{-(-}
+{-+}
 module MUCLOSURE {I J}(F : J <I (I + J)) where
 
   open module Ij (j : J) = IxCon (F j)
@@ -885,7 +885,7 @@ module MUCLOSURE {I J}(F : J <I (I + J)) where
 
   MuI : J <I I
   MuI j = Skel j <| Path j / leaf j
-{-)-}
+{+-}
 
 
 -- From Derivatives to Jacobians

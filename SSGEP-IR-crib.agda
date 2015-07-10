@@ -118,30 +118,107 @@ EL'  (suc n)  X = EL n X
 
 -- let's put induction-recursion in a bottle
 
+record FAM (I : Set1) : Set1 where
+  constructor _&_
+  field
+    RawData  : Set
+    Meaning  : RawData -> I
+open FAM
+
+IF : forall {I} -> I -> FAM I
+IF i     = One
+         & \ _ -> i
+
+KF : forall A -> FAM (UP A)
+KF A     = A
+         & up
+
+SgF : forall {I : Set1} {J : I -> Set1}
+             (S : FAM I)(T : (i : I) -> FAM (J i))
+        -> FAM (SG I J)
+SgF S T  = (Sg (RawData S) \ s -> RawData (T (Meaning S s)))
+         & \ { (s , t) ->
+           let i = Meaning S     s
+               j = Meaning (T i) t
+           in  i , j }
+
+PiF : forall (A : Set)   {J : A -> Set1}
+                         (T : (a : A) -> FAM (J a))
+        -> FAM ((a : A) -> J a)
+PiF A T  = ((a : A) -> RawData (T a))
+         & \ { f a -> Meaning (T a) (f a) }
+
 data IR (I : Set1) : Set1          -- descriptions of IR sets
-INFO : forall I -> IR I -> Set1    -- the information you can get from a set
+INFO : forall {I} -> IR I -> Set1    -- the information you can get from a set
 
 data IR I where
   rec : IR I
   kon : Set -> IR I
   pi  : (A : Set)(T : A -> IR I) -> IR I
-  sg  : (S : IR I)(T : INFO I S -> IR I) -> IR I
+  sg  : (S : IR I)(T : INFO S -> IR I) -> IR I
 
-INFO I rec      = I
-INFO I (kon A)  = UP A
-INFO I (pi A T) = (a : A) -> INFO I (T a)
-INFO I (sg S T) = SG (INFO I S) \ s -> INFO I (T s)
+INFO {I} rec      = I
+INFO     (kon A)  = UP A
+INFO     (pi A T) = (a : A) -> INFO (T a)
+INFO     (sg S T) = SG (INFO S) \ s -> INFO (T s)
 
-Node   : forall {I}(T : IR I) ->
-           (X : Set)(d : X -> I) -> Set
-decode : forall {I}(T : IR I) ->
-           (X : Set)(d : X -> I) -> Node T X d -> INFO I T
-Node rec X d = X
-Node (kon A) X d = A
-Node (pi A T) X d = (a : A) -> Node (T a) X d
-Node (sg S T) X d = Sg (Node S X d) \ s -> Node (T (decode S X d s)) X d
-decode rec X d x = d x
-decode (kon A) X d a = up a
-decode (pi A T) X d f = \ a -> decode (T a) X d (f a)
-decode (sg S T) X d (s , t) = s' , decode (T s') X d t where
-  s' = decode S X d s
+NODE : forall {I}(T : IR I) -> FAM I -> FAM (INFO T)
+NODE rec      F = F
+NODE (kon A)  F = KF A
+NODE (pi A T) F = PiF A \ a -> NODE (T a) F
+NODE (sg S T) F = SgF (NODE S F) \ i -> NODE (T i) F
+
+record IRDesc (I : Set1) : Set1 where
+  constructor _/_
+  field
+    Structure   : IR I
+    Process     : INFO Structure -> I
+open IRDesc
+
+{-
+data MU {I}(D : IRDesc I) : Set
+[_]M : forall {I D} -> MU {I} D -> I
+{-
+MUFAM : forall {I}(D : IRDesc I) -> FAM I
+MUFAM D = MU D & [_]M
+
+data MU {I} D where
+  <_> : RawData (NODE (Structure D) (MUFAM D)) -> MU D
+
+[_]M {I}{D} < d > = Process D (Meaning (NODE (Structure D) (MUFAM D)) d)
+-}
+
+NODEMU : forall {I}(T : IR I)(D : IRDesc I) -> FAM (INFO T)
+
+data MU {I} D where
+  <_> : RawData (NODEMU (Structure D) D) -> MU D
+
+[_]M {I}{D} < d > = Process D (Meaning (NODEMU (Structure D) D) d)
+
+NODEMU rec      D = MU D & \ d -> [ d ]M
+NODEMU (kon A)  D = KF A
+NODEMU (pi A T) D = PiF A \ a -> NODEMU (T a) D
+NODEMU (sg S T) D = SgF (NODEMU S D) \ i -> NODEMU (T i) D
+-}
+
+data MU {I}(D : IRDesc I) : Set
+[_]M : forall {I D} -> MU {I} D -> I
+NodeMU   : forall {I}(T : IR I)(D : IRDesc I) ->
+              Set
+decodeMU  : forall {I}(T : IR I)(D : IRDesc I) ->
+              NodeMU T D -> INFO T
+
+data MU {I} D where
+  <_> : NodeMU (Structure D) D -> MU D
+
+[_]M {I}{D} < d > = Process D (decodeMU (Structure D) D d) where
+NodeMU rec      D = MU D
+NodeMU (kon A)  D = A
+NodeMU (pi A T) D = (a : A) -> NodeMU (T a) D
+NodeMU (sg S T) D = Sg (NodeMU S D) \ s -> NodeMU (T (decodeMU S D s)) D
+decodeMU rec      D x       = [ x ]M
+decodeMU (kon A)  D a       = up a
+decodeMU (pi A T) D f       = \ a -> decodeMU (T a) D (f a)
+decodeMU (sg S T) D (s , t) = s' , t' where
+  s' = decodeMU S      D s
+  t' = decodeMU (T s') D t
