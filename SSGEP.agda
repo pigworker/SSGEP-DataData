@@ -795,7 +795,7 @@ vcons x xs = < (<> , x <?> xs) >
 
 
 -- free monads on indexed containers
-{-+}
+{-(-}
 StopOrGo : forall {I} -> (I <I I) -> (I <I (I + I))
 StopOrGo F i = SgI Two (elI (inl i) <?> ReI (F i) inr)
 
@@ -808,10 +808,11 @@ skip F x = < (tt , <>) , (\ _ -> x) >
 
 extend : forall {I}(F : I <I I){X Y : I -> Set}  ->
         (X -:> (F I* Y)) -> (F I* X) -:> (F I* Y)
-extend F k f = {!!}
-{+-}
+extend F k < (tt , <>) , x > = k (x <>)
+extend F k < (ff , a) , b > = < (ff , a) , (\ p -> extend F k (b p)) >
+{-)-}
 
-{-+}
+{-(-}
 bind : forall {I}(F : I <I I){X Y : I -> Set}{i}  ->
         (F I* X) i -> (X -:> (F I* Y)) -> (F I* Y) i
 bind F xF k = extend F k xF
@@ -823,18 +824,18 @@ semi F f g = extend F g o f
 one : forall {I}(F : I <I I){X : I -> Set} ->
         ([ F ]I X) -:> (F I* X)
 one F (s , k) = < (ff , s) , skip F o k >
-{+-}
+{-)-}
 
-{-+}
+{-(-}
 module CALL {I}(F : I <I I){i} where
   open IxCon (F i)
   call : (s : Sh Node) -> (F I* \ i' -> next s ~ i') i
   call s = one F (s , from)
 open CALL
-{+-}
+{-)-}
 
 -- Edwin's door, or thereabouts
-{-+}
+{-(-}
 data DoorState : Set where opened closed : DoorState
 
 data DoorCommand : DoorState -> Set where
@@ -843,27 +844,39 @@ data DoorCommand : DoorState -> Set where
   close    : DoorCommand opened
 
 DoorResponse : (i : DoorState) -> DoorCommand i -> Set
-DoorResponse i c = {!!}
+DoorResponse .closed knock = One
+DoorResponse .closed tryOpen = DoorState
+DoorResponse .opened close = One
 
-doorNext : (i : DoorState)(c : DoorCommand i)(r : DoorResponse i c) -> DoorState
-doorNext i c r = {!!}
-{+-}
+doorNext : {i : DoorState}(c : DoorCommand i)(r : DoorResponse i c) -> DoorState
+doorNext {.closed} knock <> = closed
+doorNext {.closed} tryOpen r = r
+doorNext {.opened} close <> = closed
+{-)-}
 
-{-+}
+{-(-}
 DOOR : DoorState <I DoorState
-DOOR i = (DoorCommand i <| DoorResponse i) / doorNext i
+DOOR i = (DoorCommand i <| DoorResponse i) / doorNext 
 
 data _==_ {l}{X : Set l}(x : X) : X -> Set l where
   refl : x == x
 
 doorFun : (DOOR I* (_==_ closed)) closed
 doorFun =
-  {!!}
-{+-}
+  bind DOOR (call DOOR knock) \ { {.closed} (from <>) ->
+  bind DOOR (call DOOR tryOpen) \
+    { {.opened} (from opened) ->
+      bind DOOR (call DOOR close) \ { {.closed} (from <>) ->
+      skip DOOR refl }
+    ; {.closed} (from closed) ->
+      skip DOOR refl
+    }
+  }
+{-)-}
 
 
 -- CLOSURE under least fixpoint
-{-+}
+{-(-}
 module MUCLOSURE {I J}(F : J <I (I + J)) where
 
   open module Ij (j : J) = IxCon (F j)
@@ -885,12 +898,12 @@ module MUCLOSURE {I J}(F : J <I (I + J)) where
 
   MuI : J <I I
   MuI j = Skel j <| Path j / leaf j
-{+-}
+{-)-}
 
 
 -- From Derivatives to Jacobians
 
-{-+}
+{-(-}
 -- a set minus a singleton
 _-[_] : (X : Set)(x : X) -> Set
 X -[ x ] = Sg X \ x' -> x == x' -> Zero
@@ -905,7 +918,7 @@ Jacobian {I}{J} F (j , i) =  JSh j i <| JPo j i / jIx j i
     JPo j .(next j s p) (s , from p) = Po (Node j) s -[ p ]
     jIx : forall j i -> (s : JSh j i) -> JPo j i s -> I
     jIx j ._ (s , from _) (p , _) = next j s p
-{+-}
+{-)-}
 
 
 {--------------------------------------------------------------------}
@@ -913,7 +926,7 @@ Jacobian {I}{J} F (j , i) =  JSh j i <| JPo j i / jIx j i
 {--------------------------------------------------------------------}
 
 -- We'll need to pay attention to levels of the predicative hierarchy
-{-+}
+{-(-}
 record SG {l}(S : Set l)(T : S -> Set l) : Set l where
   constructor _,_
   field
@@ -933,11 +946,11 @@ record UP {l}(X : Set l) : Set (lsuc l) where
   field
     down : X
 open UP
-{+-}
+{-)-}
 
 
 -- A universe of codes for sets.
-{-+}
+{-(-}
 data Desc {l}(I : Set l) : Set (lsuc l) where
   var : (i : I) -> Desc I
   sg : (A : Set l)(B : A -> Desc I) -> Desc I
@@ -953,11 +966,11 @@ data Desc {l}(I : Set l) : Set (lsuc l) where
 -- ... in a first-order way
 [ d1 ]D      X = ONE
 [ A d* B ]D  X = SG ([ A ]D X) \ _ -> [ B ]D X
-{+-}
+{-)-}
 
 
 -- action on morphisms
-{-+}
+{-(-}
 mapD : forall {l I}(A : Desc {l} I){X Y : I -> Set l}(f : X -:> Y) ->
        [ A ]D X -> [ A ]D Y
 mapD (var i)  f x          = f x
@@ -965,10 +978,10 @@ mapD (sg A B) f (a , xB)   = a , mapD (B a) f xB
 mapD (pi A B) f xB         = \ a -> mapD (B a) f (xB a)
 mapD d1       f <>         = <>
 mapD (A d* B) f (xA , xB)  = mapD A f xA , mapD B f xB
-{+-}
+{-)-}
 
 -- lifting to index by a "peg"
-{-+}
+{-(-}
 _<F_ : forall {l} -> Set l -> Set l -> Set (lsuc l)
 J <F I = J -> Desc I
 
@@ -978,29 +991,33 @@ J <F I = J -> Desc I
 mapF : forall {l}{I J : Set l}(F : J <F I){X Y} ->
        X -:> Y -> [ F ]F X -:> [ F ]F Y
 mapF F f {j} xF = mapD (F j) f xF
-{+-}
+{-)-}
 
 
 
 -- the universal datatype
-{-+}
+{-(-}
 data Data {l} I (F : I -> Desc {l} I)(i : I) : Set l where
   <_> : [ F ]F (Data I F) i -> Data I F i
-{+-}
+{-)-}
 
-{-+}
-data EnumMYSTERY {l} : Set l where blah' : EnumMYSTERY
-MYSTERY : forall {l}(I : Set l) -> ONE <F ONE {lsuc l}
-MYSTERY I <> = sg EnumMYSTERY (\
-  { blah' -> {!!}
+{-(-}
+data EnumDESC {l} : Set l where var' sg' pi' d1' d*' : EnumDESC
+DESC : forall {l}(I : Set l) -> ONE <F ONE {lsuc l}
+DESC I <> = sg EnumDESC (\
+  { var' -> sg (UP I) \ _ -> d1
+  ; sg' -> sg (Set _) \ A -> pi (UP A) \ _ -> var <>
+  ; pi' -> sg (Set _) \ A -> pi (UP A) \ _ -> var <>
+  ; d1' -> d1
+  ; d*' -> var <> d* var <>
   })
 
-Mystery' : forall {l}(I : Set l) -> Set (lsuc l)
-Mystery' I = Data ONE (MYSTERY I) <>
-{+-}
+Desc' : forall {l}(I : Set l) -> Set (lsuc l)
+Desc' I = Data ONE (DESC I) <>
+{-)-}
 
 -- we haven't left the containers
-{-+}
+{-(-}
 D2C : {I : Set} -> Desc I -> IxCon I
 D2C (var i)   = elI i
 D2C (sg A B)  = SgI A \ a -> D2C (B a)
@@ -1010,30 +1027,28 @@ D2C (A d* B)  = PiI Two \ { tt -> D2C A ; ff -> D2C B }
 
 F2I : {I J : Set} -> (J <F I) -> (J <I I)
 F2I F j = D2C (F j)
-{+-}
+{-)-}
 
 
 -- closure under "everywhere"
 
-{-+}
+{-(-}
 EVD : forall {l}{I : Set l}{X : I -> Set l}
       (D : Desc I) -> [ D ]D X -> Desc (SG I X)
-EVD D  x         = {!!}
+EVD (var i) x = var (i , x)
+EVD (sg A B) (a , bX) = EVD (B a) bX
+EVD (pi A B) a2bX = pi A \ a -> EVD (B a) (a2bX a)
+EVD d1 <> = d1
+EVD (A d* B) (aX , bX) = EVD A aX d* EVD B bX
 
 EVERYWHERE : forall {l}{I J : Set l}(F : J <F I)(X : I -> Set l) ->
              (SG J ([ F ]F X)) <F (SG I X)
 EVERYWHERE F X (j , fX) = EVD (F j) fX
-{+-}
-
-
-
-
-
-
+{-)-}
 
 -- closure under "somewhere"
 
-{-+}
+{-(-}
 SMD : forall {l}{I : Set l}{X : I -> Set l}
       (D : Desc I) -> [ D ]D X -> Desc (SG I X)
 SMD (var i)  x         = var (i , x)
@@ -1045,31 +1060,43 @@ SMD (A d* B) (xA , xB) = sg TWO \ { tt -> SMD A xA ; ff -> SMD B xB }
 SOMEWHERE : forall {l}{I J : Set l}(F : J <F I)(X : I -> Set l) ->
              (SG J ([ F ]F X)) <F (SG I X)
 SOMEWHERE F X (j , fX) = SMD (F j) fX
-{+-}
+{-)-}
 
 
-{-+}
+{-(-}
 evD : forall {l}{I : Set l}(D : Desc I){X : I -> Set l} ->
       (P : SG I X -> Set l) ->
       ((i : I)(x : X i) -> P (i , x)) ->
       (xD : [ D ]D X) -> [ EVD D xD ]D P
-evD D P p x         = {!!}
+evD (var i) P p x = p i x
+evD (sg A B) P p (a , bX) = evD (B a) P p bX
+evD (pi A B) P p f = λ a → evD (B a) P p (f a)
+evD d1 P p <> = <>
+evD (A d* B) P p (xA , xB) = evD A P p xA , evD B P p xB
 
 everywhere : forall {l}{I J : Set l}(F : J <F I){X : I -> Set l} ->
              (P : SG I X -> Set l) ->
              ((i : I)(x : X i) -> P (i , x)) ->
              (j : J)(f : [ F ]F X j) -> [ EVERYWHERE F X ]F P (j , f)
 everywhere F P p j f = evD (F j) P p f
-{+-}
+{-)-}
 
-{-+}
+{-(-}
 induction : forall {l}{I : Set l}(F : I <F I)
             (P : SG I (Data I F) -> Set l)
             (p : (i : I)(f : [ F ]F (Data I F) i) ->
                  [ EVERYWHERE F (Data I F) ]F P (i , f) -> P (i , < f >)) ->
             (i : I)(x : Data I F i) -> P (i , x)
-induction F P p i < f > = p i f (everywhere F P (induction F P p) i f)
-{+-}
+induction {l}{I} F P p i < f > = p i f (evD' (F i) f) where
+  evD' : forall (D : Desc I) ->
+          (xD : [ D ]D (Data I F)) -> [ EVD D xD ]D P
+  evD' (var i) x = induction F P p i x
+  evD' (sg A B) (a , bX) = evD' (B a )bX
+  evD' (pi A B) f = λ a → evD' (B a) (f a)
+  evD' d1 <> = <>
+  evD' (A d* B) (xA , xB) = evD' A xA , evD' B xB
+
+{-)-}
 
 
 
